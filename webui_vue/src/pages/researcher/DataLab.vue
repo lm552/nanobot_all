@@ -310,70 +310,173 @@ function getTextColor() {
   return getComputedStyle(document.body).getPropertyValue('--text2').trim() || '#4a4658'
 }
 
+function buildTooltip() {
+  return {
+    trigger: 'item',
+    backgroundColor: 'rgba(30, 10, 60, 0.92)',
+    borderColor: '#8B70FF',
+    borderWidth: 1,
+    textStyle: { color: '#f2eaff', fontSize: 11 }
+  }
+}
+
+function getGrid() {
+  return { left: 55, right: 25, top: 20, bottom: 35, containLabel: true }
+}
+
 function renderChart() {
   if (!chartInstance) return
   const x = xCol.value
   const y = yCol.value
   if (!x) return
   const textColor = getTextColor()
-  const baseOpt = {
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'item' },
-    grid: { left: 55, right: 25, top: 20, bottom: 35 },
-    xAxis: { name: x, nameTextStyle: { color: textColor, fontSize: 10 } },
-    yAxis: { name: y || '', nameTextStyle: { color: textColor, fontSize: 10 } }
-  }
-
   const dataArr = rawData.value
   const ct = currentChartType.value
 
+  chartInstance.clear()
+  const opts = { notMerge: true }
+
   if (ct === 'scatter') {
     const data = dataArr.map(r => [r[x], r[y] || 0]).filter(d => typeof d[0] === 'number')
-    chartInstance.setOption({ ...baseOpt, series: [{ type: 'scatter', data, symbolSize: 8, itemStyle: { color: '#8B70FF', opacity: 0.8 } }] })
+    chartInstance.setOption({
+      backgroundColor: 'transparent',
+      tooltip: buildTooltip(),
+      grid: getGrid(),
+      xAxis: { type: 'value', name: x, nameTextStyle: { color: textColor, fontSize: 10 } },
+      yAxis: { type: 'value', name: y || '', nameTextStyle: { color: textColor, fontSize: 10 } },
+      series: [{ type: 'scatter', data, symbolSize: 8, itemStyle: { color: '#8B70FF', opacity: 0.8 } }]
+    }, opts)
   } else if (ct === 'bar') {
     const groups = [...new Set(dataArr.map(r => r[x]))]
     const values = groups.map(g => {
       const vals = dataArr.filter(r => r[x] === g).map(r => Number(r[y])).filter(v => !isNaN(v))
       return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : 0
     })
-    chartInstance.setOption({ ...baseOpt, xAxis: { ...baseOpt.xAxis, data: groups }, series: [{ type: 'bar', data: values, itemStyle: { color: '#5a4cd8', borderRadius: [6, 6, 0, 0] } }] })
+    chartInstance.setOption({
+      backgroundColor: 'transparent',
+      tooltip: buildTooltip(),
+      grid: getGrid(),
+      xAxis: { type: 'category', data: groups, name: x, nameTextStyle: { color: textColor, fontSize: 10 } },
+      yAxis: { type: 'value', name: y || '', nameTextStyle: { color: textColor, fontSize: 10 } },
+      series: [{
+        type: 'bar', data: values, barMaxWidth: 48,
+        itemStyle: { color: '#5a4cd8', borderRadius: [6, 6, 0, 0] }
+      }]
+    }, opts)
   } else if (ct === 'boxplot') {
     const groups = [...new Set(dataArr.map(r => r[x]))]
-    const boxData = groups.map(g => {
+    const rawBoxData = groups.map(g => {
       const vals = dataArr.filter(r => r[x] === g).map(r => Number(r[y])).filter(v => !isNaN(v)).sort((a, b) => a - b)
-      if (vals.length < 5) return null
-      const q1 = vals[Math.floor(vals.length / 4)], q3 = vals[Math.floor(3 * vals.length / 4)]
-      return [vals[0], q1, vals[Math.floor(vals.length / 2)], q3, vals[vals.length - 1]]
+      if (vals.length < 1) return null
+      const n = vals.length
+      const median = n % 2 === 0 ? (vals[n / 2 - 1] + vals[n / 2]) / 2 : vals[Math.floor(n / 2)]
+      const lowerHalf = vals.slice(0, Math.floor(n / 2))
+      const upperHalf = n % 2 === 0 ? vals.slice(n / 2) : vals.slice(Math.floor(n / 2) + 1)
+      const q1 = lowerHalf.length > 0 ? (lowerHalf.length % 2 === 0 ? (lowerHalf[lowerHalf.length / 2 - 1] + lowerHalf[lowerHalf.length / 2]) / 2 : lowerHalf[Math.floor(lowerHalf.length / 2)]) : vals[0]
+      const q3 = upperHalf.length > 0 ? (upperHalf.length % 2 === 0 ? (upperHalf[upperHalf.length / 2 - 1] + upperHalf[upperHalf.length / 2]) / 2 : upperHalf[Math.floor(upperHalf.length / 2)]) : vals[vals.length - 1]
+      return { group: g, data: [vals[0], q1, median, q3, vals[vals.length - 1]] }
     }).filter(d => d !== null)
-    chartInstance.setOption({ ...baseOpt, xAxis: { ...baseOpt.xAxis, data: groups }, series: [{ type: 'boxplot', data: boxData, itemStyle: { color: '#8B70FF' } }] })
+    const boxData = rawBoxData.map(d => d.data)
+    const usedGroups = rawBoxData.map(d => d.group)
+    chartInstance.setOption({
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'item',
+        formatter: function(p) {
+          const d = p.data
+          return p.name + '<br/>' +
+            '上限: ' + (typeof d[4] === 'number' ? d[4].toFixed(2) : d[4]) + '<br/>' +
+            'Q3: ' + (typeof d[3] === 'number' ? d[3].toFixed(2) : d[3]) + '<br/>' +
+            '中位数: ' + (typeof d[2] === 'number' ? d[2].toFixed(2) : d[2]) + '<br/>' +
+            'Q1: ' + (typeof d[1] === 'number' ? d[1].toFixed(2) : d[1]) + '<br/>' +
+            '下限: ' + (typeof d[0] === 'number' ? d[0].toFixed(2) : d[0])
+        }
+      },
+      grid: getGrid(),
+      xAxis: { type: 'category', data: usedGroups, name: x, nameTextStyle: { color: textColor, fontSize: 10 } },
+      yAxis: { type: 'value', name: y || '', nameTextStyle: { color: textColor, fontSize: 10 } },
+      series: [{
+        type: 'boxplot', data: boxData,
+        itemStyle: { color: '#8B70FF', borderColor: '#5a4cd8', borderWidth: 2 }
+      }]
+    }, opts)
   } else if (ct === 'heatmap') {
     const xVals = [...new Set(dataArr.map(r => r[x]))]
     const yVals = [...new Set(dataArr.map(r => r[y]))]
     const data = []
+    let maxVal = 0
     xVals.forEach((xv, i) => yVals.forEach((yv, j) => {
       const cnt = dataArr.filter(r => r[x] === xv && r[y] === yv).length
       data.push([i, j, cnt])
+      if (cnt > maxVal) maxVal = cnt
     }))
     chartInstance.setOption({
-      grid: { left: 80, right: 20, top: 20, bottom: 45 },
-      xAxis: { data: xVals, axisLabel: { rotate: 30 } },
-      yAxis: { data: yVals },
-      visualMap: { min: 0, max: Math.max(...data.map(d => d[2])), orient: 'horizontal', bottom: 0 },
-      series: [{ type: 'heatmap', data }],
-      backgroundColor: 'transparent'
-    })
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'item',
+        formatter: function(p) {
+          return xVals[p.data[0]] + ' × ' + yVals[p.data[1]] + '<br/>计数: ' + p.data[2]
+        }
+      },
+      grid: { left: 80, right: 30, top: 20, bottom: 55 },
+      xAxis: { type: 'category', data: xVals, axisLabel: { rotate: 30, fontSize: 10, color: textColor } },
+      yAxis: { type: 'category', data: yVals, axisLabel: { fontSize: 10, color: textColor } },
+      visualMap: {
+        min: 0, max: Math.max(maxVal, 1),
+        orient: 'horizontal', bottom: 4, left: 'center',
+        calculable: true,
+        inRange: { color: ['#f2f0fa', '#b8acf0', '#8B70FF', '#5a4cd8', '#3a28b0'] },
+        textStyle: { color: textColor, fontSize: 10 }
+      },
+      series: [{
+        type: 'heatmap', data,
+        emphasis: {
+          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(90, 76, 216, 0.5)' }
+        },
+        itemStyle: { borderColor: 'rgba(255,255,255,0.3)', borderWidth: 1 }
+      }]
+    }, opts)
   } else if (ct === 'radar') {
     const inds = numericCols.value.slice(0, 6)
-    const indicator = inds.map(c => ({ name: c, max: Math.max(...dataArr.map(r => Number(r[c])).filter(v => !isNaN(v))) }))
+    const indicator = inds.map(c => ({ name: c, max: Math.max(...dataArr.map(r => Number(r[c])).filter(v => !isNaN(v))) * 1.2 }))
     const values = indicator.map(ind => {
       const vals = dataArr.map(r => Number(r[ind.name])).filter(v => !isNaN(v))
       return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : 0
     })
-    chartInstance.setOption({ radar: { indicator, center: ['50%', '55%'], radius: '65%' }, series: [{ type: 'radar', data: [{ value: values, name: '均值' }] }], backgroundColor: 'transparent' })
+    chartInstance.setOption({
+      backgroundColor: 'transparent',
+      tooltip: buildTooltip(),
+      radar: {
+        indicator,
+        center: ['50%', '55%'], radius: '65%',
+        axisName: { color: textColor, fontSize: 9 },
+        splitArea: { areaStyle: { color: ['rgba(139,112,255,0.04)', 'rgba(139,112,255,0.02)'] } }
+      },
+      series: [{
+        type: 'radar',
+        data: [{ value: values, name: '均值', areaStyle: { color: 'rgba(139,112,255,0.15)' } }],
+        itemStyle: { color: '#8B70FF' },
+        lineStyle: { color: '#8B70FF', width: 2 }
+      }]
+    }, opts)
   } else if (ct === 'parallel') {
     const dims = numericCols.value.slice(0, 5)
     const data = dataArr.map(r => dims.map(d => Number(r[d])).filter(v => !isNaN(v))).filter(arr => arr.length === dims.length)
-    chartInstance.setOption({ parallelAxis: dims.map(d => ({ dim: dims.indexOf(d), name: d })), series: [{ type: 'parallel', data, lineStyle: { color: '#8B70FF', opacity: 0.5 } }], backgroundColor: 'transparent' })
+    chartInstance.setOption({
+      backgroundColor: 'transparent',
+      tooltip: buildTooltip(),
+      parallel: { left: 60, right: 50, top: 30, bottom: 30 },
+      parallelAxis: dims.map(d => ({
+        dim: dims.indexOf(d), name: d,
+        nameTextStyle: { color: textColor, fontSize: 10 },
+        axisLabel: { color: textColor, fontSize: 9 }
+      })),
+      series: [{
+        type: 'parallel', data,
+        lineStyle: { color: '#8B70FF', opacity: 0.5, width: 1.5 },
+        emphasis: { lineStyle: { color: '#c4b5fd', width: 2.5 } }
+      }]
+    }, opts)
   }
 }
 
