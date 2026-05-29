@@ -1,0 +1,978 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>学情数据分析大屏 · 薄弱点定位 & 跨班对比</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js">
+    </script>
+    <style>
+        /* ----- 基础重置与核心变量 ----- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        :root {
+            --primary: #00e5ff;
+            --secondary: #2979ff;
+            --accent: #00b0ff;
+            --glass-bg: rgba(6, 28, 60, 0.55);
+            --glass-border: rgba(0, 229, 255, 0.25);
+            --text-main: #f0f7ff;
+            --text-sub: #a0c8f0;
+        }
+        body {
+            min-height: 120vh;
+            background: #012612;
+            background-image:
+                radial-gradient(ellipse at 20% 40%, rgba(0, 120, 255, 0.25) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 60%, rgba(0, 200, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 120%, rgba(12, 0, 40, 0.4) 0%, transparent 40%),
+                linear-gradient(145deg, #05162e 0%, #020a1a 120%);
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            padding: 16px;
+            color: #fff;
+            overflow-x: hidden;
+        }
+        /* 网格背景 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 120%;
+            height: 120%;
+            background-image:
+                linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrapper {
+            max-width: 1440px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        .flex-bw {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* ----- 标题区：发光质感 ----- */
+        .header {
+            position: relative;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            background: rgba(0, 20, 60, 0.2);
+            border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+            box-shadow: 0 0 40px rgba(0, 120, 255, 0.1);
+        }
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 6px;
+            background: linear-gradient(180deg, #ffffff 0%, #7ad0ff 120%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(0, 150, 255, 0.3);
+        }
+        .header .header-time {
+            position: absolute;
+            right: 24px;
+            font-size: 13px;
+            color: var(--text-sub);
+            background: rgba(0, 20, 40, 0.4);
+            padding: 4px 14px;
+            border-radius: 20px;
+            border: 1px solid rgba(0, 229, 255, 0.1);
+            backdrop-filter: blur(4px);
+        }
+        .header .header-logo {
+            position: absolute;
+            left: 24px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00e5ff, #2979ff);
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+        }
+
+        /* ----- 顶部KPI：毛玻璃+高亮边框 ----- */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .kpi-item {
+            background: rgba(12, 35, 70, 0.4);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            padding: 12px 12px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 120%;
+            height: 120%;
+            background: radial-gradient(circle at 0% 120%, rgba(0, 229, 255, 0.05), transparent 70%);
+            pointer-events: none;
+        }
+        .kpi-item:hover {
+            border-color: rgba(0, 229, 255, 0.6);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 229, 255, 0.1);
+        }
+        .kpi-num {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+            margin: 2px 0;
+        }
+        .kpi-label {
+            font-size: 12px;
+            color: var(--text-sub);
+            letter-spacing: 1px;
+        }
+
+        /* ----- 三栏网格布局 ----- */
+        .grid-main {
+            display: grid;
+            grid-template-columns: 21% 48% 31%;
+            gap: 12px;
+            height: calc(120vh - 160px);
+        }
+
+        /* 面板通用样式（高级玻璃效果） */
+        .panel {
+            background: rgba(6, 28, 60, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 229, 255, 0.15);
+            border-radius: 12px;
+            padding: 12px 14px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel::after {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: 15%;
+            right: 15%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0, 229, 255, 0.6), transparent);
+            opacity: 0.5;
+        }
+        .panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #b8e0ff;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 1px;
+        }
+        .panel-title span {
+            display: inline-block;
+            width: 4px;
+            height: 14px;
+            background: linear-gradient(180deg, #00e5ff, #2979ff);
+            border-radius: 2px;
+            box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+        }
+
+        /* 左栏 */
+        .left-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .left-panel {
+            flex: 1;
+        }
+        .left-panel.mid {
+            flex: 1;
+        }
+        .left-panel.bottom {
+            flex: 0.9;
+        }
+        .table-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-sub);
+        }
+        .table-row .status-on {
+            color: #00e5ff;
+        }
+        .table-row .status-warn {
+            color: #ffb74d;
+        }
+        .table-row .status-off {
+            color: #f44336;
+        }
+
+        /* 中间列：核心棚区 */
+        .center-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .center-top {
+            flex: 2.2;
+            display: flex;
+            flex-direction: column;
+        }
+        .center-bottom {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 大棚卡片网格（3行x4列） */
+        .greenhouse-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 8px;
+            flex: 1;
+            margin-top: 4px;
+        }
+        .gh-card {
+            background: rgba(8, 30, 65, 0.5);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 6px 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            font-size: 12px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        .gh-card:hover {
+            transform: scale(1.02);
+            z-index: 12;
+        }
+        .gh-card.normal {
+            border-color: #4caf50;
+            box-shadow: 0 0 15px rgba(76, 175, 80, 0.15), inset 0 0 15px rgba(76, 175, 80, 0.05);
+        }
+        .gh-card.running {
+            border-color: #00e5ff;
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.15), inset 0 0 15px rgba(0, 229, 255, 0.05);
+        }
+        .gh-card.warning {
+            border-color: #ffb74d;
+            box-shadow: 0 0 15px rgba(255, 183, 77, 0.15), inset 0 0 15px rgba(255, 183, 77, 0.05);
+        }
+        .gh-card.alert {
+            border-color: #f44336;
+            box-shadow: 0 0 15px rgba(244, 67, 54, 0.2), inset 0 0 15px rgba(244, 67, 54, 0.08);
+        }
+        .gh-card.science {
+            border-color: #ab47bc;
+            box-shadow: 0 0 15px rgba(171, 71, 188, 0.15), inset 0 0 15px rgba(171, 71, 188, 0.05);
+        }
+
+        .gh-header {
+            display: flex;
+            justify-content: space-between;
+        }
+        .gh-name {
+            font-weight: 700;
+            color: #fff;
+            font-size: 14px;
+            letter-spacing: 1px;
+        }
+        .gh-crop {
+            color: var(--text-sub);
+            font-size: 11px;
+        }
+        .gh-status {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin: 3px 0;
+        }
+        .gh-tag {
+            background: rgba(0, 229, 255, 0.08);
+            border: 1px solid rgba(0, 229, 255, 0.15);
+            padding: 0 6px;
+            border-radius: 3px;
+            font-size: 9px;
+            color: var(--text-sub);
+            white-space: nowrap;
+        }
+        .gh-footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 2px;
+            color: var(--text-sub);
+            font-size: 11px;
+        }
+        .gh-footer span {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        /* Tooltip 悬浮弹窗（5号棚） */
+        .gh-card.tooltip-5 {
+            position: relative;
+            cursor: pointer;
+        }
+        .gh-card.tooltip-5 .hover-box {
+            position: absolute;
+            top: -12px;
+            left: -190px;
+            width: 180px;
+            background: rgba(0, 12, 30, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px 12px;
+            font-size: 11px;
+            z-index: 200;
+            display: none;
+            line-height: 1.8;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.8);
+        }
+        .gh-card.tooltip-5:hover .hover-box {
+            display: block;
+        }
+        .hover-box .tit {
+            font-weight: 700;
+            color: #00e5ff;
+            margin-bottom: 2px;
+        }
+        .hover-box .row {
+            display: flex;
+            justify-content: space-between;
+            color: #b0c4e0;
+        }
+
+        /* 右栏 */
+        .right-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .right-panel.top {
+            flex: 1.3;
+        }
+        .right-panel.mid {
+            flex: 1.5;
+        }
+        .right-panel.bottom {
+            flex: 1.2;
+        }
+
+        /* 视频占位 + 光晕 */
+        .video-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            height: 80px;
+        }
+        .video-box {
+            background: #050d1a;
+            border: 1px solid rgba(0, 229, 255, 0.15);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        .video-box::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 120%;
+            height: 120%;
+            background: linear-gradient(135deg, rgba(0, 229, 255, 0.05), transparent);
+            pointer-events: none;
+        }
+        .video-box .cam-tag {
+            position: absolute;
+            top: 4px;
+            left: 6px;
+            font-size: 9px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 0 6px;
+            border-radius: 2px;
+            color: var(--text-sub);
+        }
+        .video-box .play-icon {
+            font-size: 24px;
+            color: rgba(255, 255, 255, 0.2);
+            text-shadow: 0 0 12px rgba(0, 229, 255, 0.1);
+        }
+
+        /* 图表容器 */
+        .chart-container {
+            width: 120%;
+            height: 120%;
+            min-height: 140px;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 1200px) {
+            .grid-main {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            .kpi-row {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="wrapper">
+        <!-- 头部 Header -->
+        <div class="header">
+            <div class="header-logo"></div>
+            <h1>学情数据分析大屏 · 薄弱点定位 & 跨班对比</h1>
+            <div class="header-time">2026-05-23 14:30:00 <span style="color:var(--primary); margin-left:8px;">●</span> 数据实时同步</div>
+        </div>
+
+        <!-- 顶部 6 个KPI：发光质感 -->
+        <div class="kpi-row">
+            <div class="kpi-item"><div class="kpi-num">83.6</div><div class="kpi-label">年级平均分</div></div>
+            <div class="kpi-item"><div class="kpi-num">94.2<small>%</small></div><div class="kpi-label">及格率</div></div>
+            <div class="kpi-item"><div class="kpi-num">37.5<small>%</small></div><div class="kpi-label">优秀率 (≥90)</div></div>
+            <div class="kpi-item"><div class="kpi-num">152</div><div class="kpi-label">薄弱知识点总数</div></div>
+            <div class="kpi-item"><div class="kpi-num">48</div><div class="kpi-label">学困生人数</div></div>
+            <div class="kpi-item"><div class="kpi-num">12</div><div class="kpi-label">待优化教学班</div></div>
+        </div>
+
+        <!-- 三栏主体 -->
+        <div class="grid-main">
+            <!-- 左栏 -->
+            <div class="left-area">
+                <div class="left-panel panel">
+                    <div class="panel-title"><span></span>学生综合能力雷达（薄弱定位）</div>
+                    <div id="chartRadar" class="chart-container"></div>
+                </div>
+                <div class="left-panel mid panel">
+                    <div class="panel-title"><span></span>高频薄弱知识点频次</div>
+                    <div id="chartBar" class="chart-container"></div>
+                </div>
+                <div class="left-panel bottom panel">
+                    <div class="panel-title"><span></span>班级学情动态与预警</div>
+                    <div style="overflow-y: auto; flex:1; font-size:12px;">
+                        <div class="table-row"><span>三(1)班 数学</span><span>均分78 / 弱项:分数应用题</span><span class="status-on">待提升</span></div>
+                        <div class="table-row"><span>三(2)班 英语</span><span>均分85 / 语法薄弱</span><span class="status-on">临界关注</span></div>
+                        <div class="table-row"><span>三(3)班 物理</span><span>均分69 / 力学概念混乱</span><span class="status-off">预警</span></div>
+                        <div class="table-row"><span>三(4)班 语文</span><span>均分82 / 阅读理解薄弱</span><span class="status-warn">待推进</span></div>
+                        <div class="table-row"><span>三(5)班 化学</span><span>均分88 / 方程式弱</span><span class="status-on">正常跟进</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中间栏：班级学情态势 & 薄弱干预点（核心） -->
+            <div class="center-area">
+                <div class="center-top panel">
+                    <div class="flex-bw" style="margin-bottom:4px;">
+                        <div class="panel-title"><span></span>班级学情态势 & 薄弱干预点</div>
+                        <div style="font-size:11px; color:var(--text-sub);">
+                            <span style="color:#4caf50;">●</span> 正常 &nbsp;
+                            <span style="color:#00e5ff;">●</span> 运行中 &nbsp;
+                            <span style="color:#ffb74d;">●</span> 关注 &nbsp;
+                            <span style="color:#f44336;">●</span> 预警 &nbsp;
+                            <span style="color:#ab47bc;">●</span> 科研
+                        </div>
+                    </div>
+                    <div class="greenhouse-grid">
+                        <div class="gh-card normal">
+                            <div class="gh-header"><span class="gh-name">1班·数学</span><span class="gh-crop">均分86.2</span></div>
+                            <div class="gh-status"><span class="gh-tag">几何弱</span><span class="gh-tag">运算稳定</span></div>
+                            <div class="gh-footer"><span>📊 薄弱:辅助线</span> <span>💡 专题突破</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">2班·英语</span><span class="gh-crop">均分84.5</span></div>
+                            <div class="gh-status"><span class="gh-tag">几何弱</span><span class="gh-tag">运算稳定</span></div>
+                            <div class="gh-footer"><span>📊 完形填空失分</span> <span>🎧 听读强化</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">3班·物理</span><span class="gh-crop">均分72.3</span></div>
+                            <div class="gh-status"><span class="gh-tag">力学薄弱</span><span class="gh-tag">实验待加强</span></div>
+                            <div class="gh-footer"><span>📊 浮力压强失分高</span> <span>⚠️ 关注组</span></div>
+                        </div>
+                        <div class="gh-card alert">
+                            <div class="gh-header"><span class="gh-name">4班·语文</span><span class="gh-crop">均分79.4</span></div>
+                            <div class="gh-status"><span class="gh-tag">文言文弱</span><span class="gh-tag">作文偏题</span></div>
+                            <div class="gh-footer"><span>🌡️ 83.6°C</span> <span>💧 64%</span></div>
+                        </div>
+                        <div class="gh-card warning tooltip-5">
+                            <div class="gh-header"><span class="gh-name">5班·数学</span><span class="gh-crop">均分68.7</span></div>
+                            <div class="gh-status"><span class="gh-tag">函数薄弱</span><span class="gh-tag">运算失误高</span></div>
+                            <div class="gh-footer"><span>📊 二次函数得分率45%</span> <span>⚠️ 限时训练</span></div>
+                            <div class="hover-box">
+                                <div class="tit">📌 5班数学诊断 & 差异化策略</div>
+                                <div class="row"><span>作物类型：</span><span>番茄育苗</span></div>
+                                <div class="row"><span>当前状态：</span><span style="color:#ffb74d;">需关注</span></div>
+                                <div class="row"><span>温度：</span><span>23.4°C</span></div>
+                                <div class="row"><span>湿度：</span><span>70%</span></div>
+                                
+                            </div>
+                        </div>
+                        <div class="gh-card normal">
+                            <div class="gh-header"><span class="gh-name">6班·英语</span><span class="gh-crop">均分87.1</span></div>
+                            <div class="gh-status"><span class="gh-tag">阅读推理弱</span><span class="gh-tag">基础扎实</span></div>
+                            <div class="gh-footer"><span>📊 主旨大意题失分</span> <span>📖 专项提升</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">7班·化学</span><span class="gh-crop">均分81.5</span></div>
+                            <div class="gh-status"><span class="gh-tag">方程式配平弱</span><span class="gh-tag">实验探究待巩固</span></div>
+                            <div class="gh-footer"><span>📊 推断题得分率52%</span> <span>🧪 专题复习</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">8班·语文</span><span class="gh-crop">均分84.9</span></div>
+                            <div class="gh-status"><span class="gh-tag">古诗鉴赏弱</span><span class="gh-tag">名著阅读一般</span></div>
+                            <div class="gh-footer"><span>📊 表现手法分析弱</span> <span>✍️ 每日积累</span></div>
+                        </div>
+                        <div class="gh-card science">
+                            <div class="gh-header"><span class="gh-name">9班·物理</span><span class="gh-crop">均分76.8</span></div>
+                            <div class="gh-status"><span class="gh-tag">电学基础弱</span><span class="gh-tag">电路图分析薄弱</span></div>
+                            <div class="gh-footer"><span>📊 欧姆定律应用</span> <span>⚡ 实验模拟</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">12班·化学</span><span class="gh-crop">均分80.2</span></div>
+                            <div class="gh-status"><span class="gh-tag">概率统计混淆</span><span class="gh-tag">综合题思路不清</span></div>
+                            <div class="gh-footer"><span>📊 统计图表读题弱</span> <span>📈 数据专题</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">11班·英语</span><span class="gh-crop">均分89.3</span></div>
+                            <div class="gh-status"><span class="gh-tag">写作逻辑弱</span><span class="gh-tag">长难句理解待提升</span></div>
+                            <div class="gh-footer"><span>📊 高级句型运用少</span> <span>📝 读写结合</span></div>
+                        </div>
+                        <div class="gh-card normal">
+                            <div class="gh-header"><span class="gh-name">12班·化学</span><span class="gh-crop">均分78.5</span></div>
+                            <div class="gh-status"><span class="gh-tag">物质推断弱</span><span class="gh-tag">化学计算粗心</span></div>
+                            <div class="gh-footer"><span>📊 技巧计算薄弱</span> <span>📐 每日一算</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="center-bottom panel">
+                    <div class="panel-title"><span></span>历次考试学业趋势（定位进步与波动）</div>
+                    <div id="chartMix" class="chart-container"></div>
+                </div>
+            </div>
+
+            <!-- 右栏：棚内环境曲线 + 班级/学科对比统计（平均分/合格率）（来自页面1）+ 地图（来自页面1）+ 差异化教学优化策略 -->
+            <div class="right-area">
+                <div class="right-panel top panel">
+                    <div class="panel-title"><span></span>学科成绩变化曲线（动态追踪）</div>
+                    <div id="chartLine" class="chart-container"></div>
+                </div>
+
+                <!-- 替换为：班级/学科对比统计（平均分/合格率）（来自页面1，柱状图+折线图混合） -->
+                <div class="right-panel mid panel">
+                    <div class="panel-title"><span></span>班级/学科对比统计（平均分/合格率）</div>
+                    <div id="chartBlBar" class="chart-container" style="min-height:180px;"></div>
+                </div>
+
+                <!-- 替换为：地图（来自页面1）+ 差异化教学优化策略 -->
+                <div class="right-panel bottom panel">
+                    <div class="flex-bw" style="margin-bottom:6px;">
+                        <div class="panel-title"><span></span>跨班级学情对比分析</div>
+                        <div class="panel-title" style="margin-left:16px;"><span></span>差异化教学优化策略</div>
+                    </div>
+                    <div style="display:flex; gap:8px; height:calc(120% - 30px);">
+                        <div style="flex:1.2;" id="chartMap"></div>
+                        <div style="flex:1;">
+                            <div class="video-grid">
+                                <div class="video-box"><span class="cam-tag">策略1</span><span class="play-icon">📌</span><div style="position:absolute; bottom:4px; font-size:10px; color:#a0c8f0;">五班函数薄弱→微专题+错题诊所</div></div>
+                                <div class="video-box"><span class="cam-tag">策略2</span><span class="play-icon">📌</span><div style="position:absolute; bottom:4px; font-size:10px; color:#a0c8f0;">物理力学薄弱→实验小组+导学案分层</div></div>
+                                <div class="video-box"><span class="cam-tag">策略3</span><span class="play-icon">📌</span><div style="position:absolute; bottom:4px; font-size:10px; color:#a0c8f0;">英语完形高频错→真题语境+词块记忆</div></div>
+                                <div class="video-box"><span class="cam-tag">策略4</span><span class="play-icon">📌</span><div style="position:absolute; bottom:4px; font-size:10px; color:#a0c8f0;">跨班数学对比→动态走班、变式教学</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 1. 雷达图 - 环境多指标 ====================
+        var radarChart = echarts.init(document.getElementById('chartRadar'));
+        radarChart.setOption({
+            radar: {
+                indicator: [
+                    { name: '运算能力', max: 120 },
+                    { name: '逻辑推理', max: 120 },
+                    { name: '空间想象', max: 120 },
+                    { name: '数据分析', max: 120 },
+                    { name: '语言表达', max: 120 },
+                    { name: '综合应用', max: 120 }
+                ],
+                center: ['50%', '50%'],
+                radius: '70%',
+                axisName: { color: '#a6c1ee', fontSize: 12 },
+                splitArea: { areaStyle: { color: ['rgba(0,229,255,0.02)', 'rgba(0,229,255,0.02)'] } },
+                axisLine: { lineStyle: { color: 'rgba(0,229,255,0.15)' } },
+                splitLine: { lineStyle: { color: 'rgba(0,229,255,0.08)' } }
+            },
+            series: [{
+                type: 'radar',
+                data: [{ value: [74, 56, 62, 83, 71, 48], name: '年级平均能力' }],
+                areaStyle: { color: 'rgba(0,229,255,0.15)' },
+                lineStyle: { color: '#00e5ff', width: 2 },
+                itemStyle: { color: '#00e5ff' }
+            }]
+        });
+
+        // ==================== 2. 条形图 - 虫情预警 ====================
+        var barChart = echarts.init(document.getElementById('chartBar'));
+        barChart.setOption({
+            grid: { left: '22%', right: '5%', top: '5%', bottom: '5%' },
+            xAxis: {
+                type: 'value',
+                splitLine: { show: false },
+                axisLabel: { color: '#a6c1ee', fontSize: 12 }
+            },
+            yAxis: {
+                type: 'category',
+                data: ['函数综合', '力学分析', '语法填空', '文言文阅读', '化学方程式'],
+                axisLine: { show: false },
+                axisLabel: { color: '#a6c1ee', fontSize: 11 }
+            },
+            series: [{
+                type: 'bar',
+                data: [120, 180, 120, 150, 80],
+                barWidth: 12,
+                itemStyle: {
+                    borderRadius: [0, 4, 4, 0],
+                    color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                        { offset: 0, color: '#0055aa' },
+                        { offset: 0.6, color: '#00b0ff' },
+                        { offset: 1, color: '#00e5ff' }
+                    ])
+                }
+            }]
+        });
+
+        // ==================== 3. 折线图 - 环境曲线 ====================
+        var lineChart = echarts.init(document.getElementById('chartLine'));
+        lineChart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['数学', '语文', '英语'], textStyle: { color: '#a6c1ee' }, bottom: 0, itemWidth: 12, itemHeight: 8 },
+            grid: { left: '5%', right: '8%', top: '8%', bottom: '22%' },
+            xAxis: {
+                type: 'category',
+                boundaryGap: false,
+                data: ['一模', '二模', '三模', '期中', '月考1', '月考2', '月考3', '期末'],
+                axisLabel: { color: '#a6c1ee' },
+                axisLine: { lineStyle: { color: 'rgba(0,229,255,0.1)' } }
+            },
+            yAxis: [
+                { type: 'value', min: 0, max: 120, splitLine: { lineStyle: { color: 'rgba(0,229,255,0.05)' } }, axisLabel: { color: '#a6c1ee' } },
+                { type: 'value', min: 300, max: 1200, splitLine: { show: false }, axisLabel: { color: '#a6c1ee' } }
+            ],
+            series: [
+                { name: '数学', type: 'line', data: [72, 74, 78, 80, 82, 85, 86, 87], smooth: true, color: '#00e5ff',
+                    symbol: 'circle', symbolSize: 4, lineStyle: { width: 2 } },
+                { name: '语文', type: 'line', data: [78, 79, 80, 81, 83, 84, 85, 86], smooth: true, color: '#4caf50',
+                    symbol: 'diamond', symbolSize: 4, lineStyle: { width: 2 } },
+                { name: '英语', type: 'line', yAxisIndex: 1, data: [80, 83, 85, 86, 88, 89, 90, 91], smooth: true,
+                    color: '#ffb74d', symbol: 'triangle', symbolSize: 4, lineStyle: { width: 2 } }
+            ]
+        });
+
+        // ==================== 4. 混合图 - 均分与销售 ====================
+        var mixChart = echarts.init(document.getElementById('chartMix'));
+        mixChart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['年级均分', '优秀率(≥90)'], textStyle: { color: '#a6c1ee' }, bottom: 0, itemWidth: 12, itemHeight: 8 },
+            grid: { left: '8%', right: '8%', top: '8%', bottom: '22%' },
+            xAxis: {
+                type: 'category',
+                data: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '12月', '11月', '12月'],
+                axisLabel: { color: '#a6c1ee' },
+                axisLine: { lineStyle: { color: 'rgba(0,229,255,0.1)' } }
+            },
+            yAxis: [
+                { type: 'value', name: '均分', nameTextStyle: { color: '#a6c1ee' },
+                    splitLine: { lineStyle: { color: 'rgba(0,229,255,0.05)' } }, axisLabel: { color: '#a6c1ee' } },
+                { type: 'value', name: '优秀率(≥90)', nameTextStyle: { color: '#a6c1ee' }, splitLine: { show: false },
+                    axisLabel: { color: '#a6c1ee' } }
+            ],
+            series: [{
+                name: '年级均分',
+                type: 'bar',
+                data: [500, 400, 600, 800, 1200, 1200, 1120, 900, 700, 500, 300, 400],
+                itemStyle: {
+                    borderRadius: [4, 4, 0, 0],
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#00e5ff' }, { offset: 1,
+                        color: '#0055aa' }])
+                }
+            }, {
+                name: '优秀率(≥90)',
+                type: 'line',
+                yAxisIndex: 1,
+                data: [28, 30, 33, 36, 39, 42, 44, 41, 38, 35, 32, 30],
+                color: '#ffb74d',
+                symbol: 'circle',
+                symbolSize: 4,
+                smooth: true
+            }]
+        });
+
+        // ==================== 5. 班级/学科对比统计（平均分/合格率）（来自页面1：柱状图+折线图混合） ====================
+        var blBarChart = echarts.init(document.getElementById('chartBlBar'));
+var category = ["1班","2班","3班","4班","5班","6班","7班","8班","9班","10班","11班","12班","13班","14班","15班","16班","17班","18班","19班","20班"];
+var lineData = [94,91,68,78,63,93,85,88,82,76,90,71,86,79,84,92,87,73,81,89];
+var barData = [86.2,84.5,72.3,79.4,68.7,87.1,81.5,84.9,80.5,75.3,88.2,73.6,83.1,78.4,82.7,85.6,84.0,76.5,79.8,86.9];
+        var rateData = barData.map(function(b, i) { return parseFloat((b / lineData[i]).toFixed(2)); });
+
+        blBarChart.setOption({
+            tooltip: { show: true, trigger: 'item', axisPointer: { type: 'shadow', label: { show: true,
+                        backgroundColor: '#7B7DDC' } } },
+            legend: { show: true, textStyle: { color: '#fff' }, top: 0 },
+            grid: { left: '6%', right: '6%', top: '20%', bottom: '12%' },
+            xAxis: {
+                data: category,
+                axisLine: { lineStyle: { color: '#B4B4B4' } },
+                axisTick: { show: false },
+                axisLabel: { color: '#fff', fontSize: 9, interval: 2 }
+            },
+            yAxis: [{
+                splitLine: { show: false },
+                axisLine: { lineStyle: { color: '#B4B4B4' } },
+                axisLabel: { formatter: '{value}', color: '#fff', fontSize: 12 }
+            }, {
+                splitLine: { show: false },
+                axisLine: { lineStyle: { color: '#B4B4B4' } },
+                axisLabel: { formatter: '{value}', color: '#fff', fontSize: 12 }
+            }],
+            series: [{
+                name: '提升率',
+                type: 'line',
+                smooth: true,
+                showAllSymbol: true,
+                symbol: 'emptyCircle',
+                symbolSize: 6,
+                yAxisIndex: 1,
+                itemStyle: { normal: { color: '#F02FC2' } },
+                data: rateData
+            }, {
+                name: '班级平均分',
+                type: 'bar',
+                barWidth: 8,
+                itemStyle: {
+                    normal: {
+                        barBorderRadius: 5,
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#956FD4' },
+                        { offset: 1, color: '#3EACE5' }])
+                    }
+                },
+                data: barData
+            }, {
+                name: '及格率(%)',
+                type: 'bar',
+                barGap: '-120%',
+                barWidth: 8,
+                itemStyle: {
+                    normal: {
+                        barBorderRadius: 5,
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0,
+                            color: 'rgba(156,127,211,0.8)' }, { offset: 0.2,
+                            color: 'rgba(156,127,211,0.5)' }, { offset: 1,
+                            color: 'rgba(156,127,211,0.2)' }])
+                    }
+                },
+                z: -12,
+                data: lineData
+            }]
+        });
+
+        // ==================== 6. 地图（来自页面1） ====================
+               // ==================== 6. 地图（福建轮廓 + 班级散点，无地名） ====================
+               // ==================== 6. 地图（真实轮廓 + 区域名称完全隐藏 + 课堂互动指数） ====================
+        var mapChart = echarts.init(document.getElementById('chartMap'));
+
+        // 区域名称映射（仅供内部注册，不显示）
+        var nameMapping = {
+            "福州市": "教学区",
+            "厦门市": "科创区",
+            "泉州市": "人文区",
+            "漳州市": "实践区",
+            "龙岩市": "山地训练区",
+            "三明市": "生态区",
+            "南平市": "综合区",
+            "莆田市": "体育区",
+            "宁德市": "艺术区"
+        };
+
+        // 班级散点数据：课堂互动指数（0-100）
+        var classPoints = [
+            { name: '1班', lng: 119.30, lat: 26.08, value: 92 },
+            { name: '2班', lng: 118.10, lat: 24.48, value: 88 },
+            { name: '3班', lng: 118.59, lat: 24.91, value: 75 },
+            { name: '4班', lng: 117.65, lat: 24.51, value: 82 },
+            { name: '5班', lng: 116.83, lat: 25.39, value: 68 },
+            { name: '6班', lng: 117.44, lat: 26.47, value: 90 },
+            { name: '7班', lng: 118.18, lat: 27.54, value: 85 },
+            { name: '8班', lng: 119.01, lat: 25.59, value: 89 },
+            { name: '9班', lng: 119.53, lat: 27.16, value: 79 },
+            { name: '10班', lng: 118.30, lat: 25.10, value: 83 },
+            { name: '11班', lng: 117.95, lat: 26.65, value: 94 },
+            { name: '12班', lng: 118.70, lat: 24.80, value: 87 },
+            { name: '13班', lng: 116.50, lat: 25.80, value: 81 },
+            { name: '14班', lng: 119.10, lat: 26.50, value: 86 },
+            { name: '15班', lng: 118.40, lat: 26.90, value: 77 }
+        ];
+
+        var scatterData = classPoints.map(p => ({
+            name: p.name,
+            value: [p.lng, p.lat, p.value]
+        }));
+
+        // 加载福建GeoJSON，修改区域名称后注册
+        fetch('https://geo.datav.aliyun.com/areas_v3/bound/350000_full.json')
+            .then(function(r) { return r.json(); })
+            .then(function(geoJson) {
+                geoJson.features.forEach(function(feature) {
+                    var originalName = feature.properties.name;
+                    if (nameMapping[originalName]) {
+                        feature.properties.name = nameMapping[originalName];
+                    } else {
+                        feature.properties.name = "分区";
+                    }
+                });
+                echarts.registerMap('customFujian', geoJson);
+                renderMap();
+            })
+            .catch(function() {
+                renderFallback();
+            });
+
+        function renderMap() {
+            mapChart.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function(params) {
+                        // 只显示班级散点的信息，地图区域不显示任何内容
+                        if (params.seriesType === 'effectScatter') {
+                            return params.name + '<br/>课堂互动指数: ' + params.value[2] + '分';
+                        }
+                        return '';   // 地图区域无提示
+                    },
+                    textStyle: { fontSize: 12 }
+                },
+                geo: {
+                    map: 'customFujian',
+                    roam: false,
+                    zoom: 1.2,
+                    center: [117.8, 26.2],
+                    label: {
+                        show: false,           // 完全隐藏区域名称
+                        emphasis: { show: false }
+                    },
+                    itemStyle: {
+                        normal: {
+                            areaColor: 'rgba(6, 28, 60, 0.5)',
+                            borderColor: '#00e5ff',
+                            borderWidth: 1.5,
+                            shadowBlur: 10,
+                            shadowColor: '#00e5ff'
+                        },
+                        emphasis: {
+                            areaColor: 'rgba(0, 100, 200, 0.3)',
+                            borderWidth: 2,
+                            borderColor: '#00e5ff'
+                        }
+                    }
+                },
+                series: [{
+                    type: 'effectScatter',
+                    coordinateSystem: 'geo',
+                    data: scatterData,
+                    symbolSize: 7,
+                    showEffectOn: 'render',
+                    rippleEffect: { period: 3, scale: 1.5, brushType: 'stroke' },
+                    label: {
+                        show: true,
+                        formatter: function(params) { return params.name; },
+                        position: 'top',
+                        color: '#00e5ff',
+                        fontSize: 10,
+                        fontWeight: 'bold',
+                        textShadowBlur: 3,
+                        textShadowColor: '#000'
+                    },
+                    itemStyle: {
+                        color: '#00e5ff',
+                        shadowBlur: 8,
+                        shadowColor: '#00e5ff'
+                    },
+                    z: 10
+                }]
+            });
+        }
+
+        function renderFallback() {
+            mapChart.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function(params) {
+                        return params.name + '<br/>课堂互动指数: ' + params.value[2] + '分';
+                    }
+                },
+                xAxis: { show: false, min: 115, max: 120 },
+                yAxis: { show: false, min: 24, max: 28 },
+                series: [{
+                    type: 'effectScatter',
+                    data: scatterData,
+                    symbolSize: 7,
+                    label: { show: true, formatter: '{b}', position: 'top', color: '#00e5ff' },
+                    itemStyle: { color: '#00e5ff' }
+                }]
+            });
+        }
+
+        // ==================== 窗口自适应 ====================
+        window.addEventListener('resize', function() {
+            radarChart.resize();
+            barChart.resize();
+            lineChart.resize();
+            mixChart.resize();
+            blBarChart.resize();
+            mapChart.resize();
+        });
+    </script>
+
+</body>
+</html>

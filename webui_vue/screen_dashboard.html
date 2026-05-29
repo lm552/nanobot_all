@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>智慧蔬菜大棚监测数据大屏</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js">
+    </script>
+    <style>
+        /* ----- 基础重置与核心变量 ----- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        :root {
+            --primary: #00e5ff;
+            --secondary: #2979ff;
+            --accent: #00b0ff;
+            --glass-bg: rgba(6, 28, 60, 0.55);
+            --glass-border: rgba(0, 229, 255, 0.25);
+            --text-main: #f0f7ff;
+            --text-sub: #a0c8f0;
+        }
+        body {
+            min-height: 100vh;
+            background: #010612;
+            background-image:
+                radial-gradient(ellipse at 20% 40%, rgba(0, 100, 255, 0.25) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 60%, rgba(0, 200, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 100%, rgba(10, 0, 40, 0.4) 0%, transparent 40%),
+                linear-gradient(145deg, #05162e 0%, #020a1a 100%);
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            padding: 16px;
+            color: #fff;
+            overflow-x: hidden;
+        }
+        /* 网格背景 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrapper {
+            max-width: 1440px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        .flex-bw {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* ----- 标题区：发光质感 ----- */
+        .header {
+            position: relative;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            background: rgba(0, 20, 60, 0.2);
+            border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+            box-shadow: 0 0 40px rgba(0, 100, 255, 0.1);
+        }
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 6px;
+            background: linear-gradient(180deg, #ffffff 0%, #7ad0ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(0, 150, 255, 0.3);
+        }
+        .header .header-time {
+            position: absolute;
+            right: 24px;
+            font-size: 13px;
+            color: var(--text-sub);
+            background: rgba(0, 20, 40, 0.4);
+            padding: 4px 14px;
+            border-radius: 20px;
+            border: 1px solid rgba(0, 229, 255, 0.1);
+            backdrop-filter: blur(4px);
+        }
+        .header .header-logo {
+            position: absolute;
+            left: 24px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00e5ff, #2979ff);
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+        }
+
+        /* ----- 顶部KPI：毛玻璃+高亮边框 ----- */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .kpi-item {
+            background: rgba(10, 35, 70, 0.4);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            padding: 12px 10px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 0% 100%, rgba(0, 229, 255, 0.05), transparent 70%);
+            pointer-events: none;
+        }
+        .kpi-item:hover {
+            border-color: rgba(0, 229, 255, 0.6);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 229, 255, 0.1);
+        }
+        .kpi-num {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+            margin: 2px 0;
+        }
+        .kpi-label {
+            font-size: 12px;
+            color: var(--text-sub);
+            letter-spacing: 1px;
+        }
+
+        /* ----- 三栏网格布局 ----- */
+        .grid-main {
+            display: grid;
+            grid-template-columns: 21% 48% 31%;
+            gap: 12px;
+            height: calc(100vh - 160px);
+        }
+
+        /* 面板通用样式（高级玻璃效果） */
+        .panel {
+            background: rgba(6, 28, 60, 0.45);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 229, 255, 0.15);
+            border-radius: 10px;
+            padding: 12px 14px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel::after {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: 15%;
+            right: 15%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0, 229, 255, 0.6), transparent);
+            opacity: 0.5;
+        }
+        .panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #b8e0ff;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 1px;
+        }
+        .panel-title span {
+            display: inline-block;
+            width: 4px;
+            height: 14px;
+            background: linear-gradient(180deg, #00e5ff, #2979ff);
+            border-radius: 2px;
+            box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+        }
+
+        /* 左栏 */
+        .left-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .left-panel {
+            flex: 1;
+        }
+        .left-panel.mid {
+            flex: 1;
+        }
+        .left-panel.bottom {
+            flex: 0.9;
+        }
+        .table-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-sub);
+        }
+        .table-row .status-on {
+            color: #00e5ff;
+        }
+        .table-row .status-warn {
+            color: #ffb74d;
+        }
+        .table-row .status-off {
+            color: #f44336;
+        }
+
+        /* 中间列：核心棚区 */
+        .center-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .center-top {
+            flex: 2.2;
+            display: flex;
+            flex-direction: column;
+        }
+        .center-bottom {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 大棚卡片网格（3行x4列） */
+        .greenhouse-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 8px;
+            flex: 1;
+            margin-top: 4px;
+        }
+        .gh-card {
+            background: rgba(8, 30, 65, 0.5);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 6px 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            font-size: 12px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        .gh-card:hover {
+            transform: scale(1.02);
+            z-index: 10;
+        }
+        .gh-card.normal {
+            border-color: #4caf50;
+            box-shadow: 0 0 15px rgba(76, 175, 80, 0.15), inset 0 0 15px rgba(76, 175, 80, 0.05);
+        }
+        .gh-card.running {
+            border-color: #00e5ff;
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.15), inset 0 0 15px rgba(0, 229, 255, 0.05);
+        }
+        .gh-card.warning {
+            border-color: #ffb74d;
+            box-shadow: 0 0 15px rgba(255, 183, 77, 0.15), inset 0 0 15px rgba(255, 183, 77, 0.05);
+        }
+        .gh-card.alert {
+            border-color: #f44336;
+            box-shadow: 0 0 15px rgba(244, 67, 54, 0.2), inset 0 0 15px rgba(244, 67, 54, 0.08);
+        }
+        .gh-card.science {
+            border-color: #ab47bc;
+            box-shadow: 0 0 15px rgba(171, 71, 188, 0.15), inset 0 0 15px rgba(171, 71, 188, 0.05);
+        }
+
+        .gh-header {
+            display: flex;
+            justify-content: space-between;
+        }
+        .gh-name {
+            font-weight: 700;
+            color: #fff;
+            font-size: 14px;
+            letter-spacing: 1px;
+        }
+        .gh-crop {
+            color: var(--text-sub);
+            font-size: 11px;
+        }
+        .gh-status {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin: 3px 0;
+        }
+        .gh-tag {
+            background: rgba(0, 229, 255, 0.08);
+            border: 1px solid rgba(0, 229, 255, 0.15);
+            padding: 0 6px;
+            border-radius: 3px;
+            font-size: 9px;
+            color: var(--text-sub);
+            white-space: nowrap;
+        }
+        .gh-footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 2px;
+            color: var(--text-sub);
+            font-size: 11px;
+        }
+        .gh-footer span {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        /* Tooltip 悬浮弹窗（5号棚） */
+        .gh-card.tooltip-5 {
+            position: relative;
+            cursor: pointer;
+        }
+        .gh-card.tooltip-5 .hover-box {
+            position: absolute;
+            top: -10px;
+            left: -190px;
+            width: 180px;
+            background: rgba(0, 12, 30, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 11px;
+            z-index: 200;
+            display: none;
+            line-height: 1.8;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.8);
+        }
+        .gh-card.tooltip-5:hover .hover-box {
+            display: block;
+        }
+        .hover-box .tit {
+            font-weight: 700;
+            color: #00e5ff;
+            margin-bottom: 2px;
+        }
+        .hover-box .row {
+            display: flex;
+            justify-content: space-between;
+            color: #b0c4e0;
+        }
+
+        /* 右栏 */
+        .right-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .right-panel.top {
+            flex: 1.3;
+        }
+        .right-panel.mid {
+            flex: 1.5;
+        }
+        .right-panel.bottom {
+            flex: 1.2;
+        }
+
+        /* 视频占位 + 光晕 */
+        .video-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            height: 80px;
+        }
+        .video-box {
+            background: #050d1a;
+            border: 1px solid rgba(0, 229, 255, 0.15);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        .video-box::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(0, 229, 255, 0.05), transparent);
+            pointer-events: none;
+        }
+        .video-box .cam-tag {
+            position: absolute;
+            top: 4px;
+            left: 6px;
+            font-size: 9px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 0 6px;
+            border-radius: 2px;
+            color: var(--text-sub);
+        }
+        .video-box .play-icon {
+            font-size: 24px;
+            color: rgba(255, 255, 255, 0.2);
+            text-shadow: 0 0 10px rgba(0, 229, 255, 0.1);
+        }
+
+        /* 图表容器 */
+        .chart-container {
+            width: 100%;
+            height: 100%;
+            min-height: 140px;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 1200px) {
+            .grid-main {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            .kpi-row {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="wrapper">
+        <!-- 头部 Header -->
+        <div class="header">
+            <div class="header-logo"></div>
+            <h1>智慧蔬菜大棚监测数据大屏</h1>
+            <div class="header-time">2026-05-20 15:28:38 <span style="color:var(--primary); margin-left:8px;">●</span> 运行正常</div>
+        </div>
+
+        <!-- 顶部 6 个KPI：发光质感 -->
+        <div class="kpi-row">
+            <div class="kpi-item"><div class="kpi-num">26.3</div><div class="kpi-label">今日采集温度 (°C)</div></div>
+            <div class="kpi-item"><div class="kpi-num">87<small>%</small></div><div class="kpi-label">空气实时湿度 (RH)</div></div>
+            <div class="kpi-item"><div class="kpi-num">50.7<small>%</small></div><div class="kpi-label">土壤墒情均值</div></div>
+            <div class="kpi-item"><div class="kpi-num">134</div><div class="kpi-label">今日灌溉水量 (m³)</div></div>
+            <div class="kpi-item"><div class="kpi-num">368</div><div class="kpi-label">传感器总数 (个)</div></div>
+            <div class="kpi-item"><div class="kpi-num">10</div><div class="kpi-label">异常事件 (条)</div></div>
+        </div>
+
+        <!-- 三栏主体 -->
+        <div class="grid-main">
+            <!-- 左栏 -->
+            <div class="left-area">
+                <div class="left-panel panel">
+                    <div class="panel-title"><span></span>环境多指标监测</div>
+                    <div id="chartRadar" class="chart-container"></div>
+                </div>
+                <div class="left-panel mid panel">
+                    <div class="panel-title"><span></span>虫情与病害预警</div>
+                    <div id="chartBar" class="chart-container"></div>
+                </div>
+                <div class="left-panel bottom panel">
+                    <div class="panel-title"><span></span>棚区实时状态</div>
+                    <div style="overflow-y: auto; flex:1; font-size:12px;">
+                        <div class="table-row"><span>A-02 黄瓜棚</span><span>26.4℃ / 69% / 在线</span><span class="status-on">待补水</span></div>
+                        <div class="table-row"><span>A-03 生菜棚</span><span>22.8℃ / 71% / 在线</span><span class="status-on">正常</span></div>
+                        <div class="table-row"><span>B-01 彩椒棚</span><span>28.2℃ / 62% / 离线</span><span class="status-off">温度偏高</span></div>
+                        <div class="table-row"><span>B-02 茄子棚</span><span>24.6℃ / 66% / 在线</span><span class="status-warn">正常运行</span></div>
+                        <div class="table-row"><span>C-01 番茄棚</span><span>25.2℃ / 70% / 在线</span><span class="status-on">正常</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中间栏：大棚分布与运行态势（核心） -->
+            <div class="center-area">
+                <div class="center-top panel">
+                    <div class="flex-bw" style="margin-bottom:4px;">
+                        <div class="panel-title"><span></span>大棚分布与运行态势</div>
+                        <div style="font-size:11px; color:var(--text-sub);">
+                            <span style="color:#4caf50;">●</span> 正常 &nbsp;
+                            <span style="color:#00e5ff;">●</span> 运行中 &nbsp;
+                            <span style="color:#ffb74d;">●</span> 关注 &nbsp;
+                            <span style="color:#f44336;">●</span> 预警 &nbsp;
+                            <span style="color:#ab47bc;">●</span> 科研
+                        </div>
+                    </div>
+                    <div class="greenhouse-grid">
+                        <div class="gh-card normal">
+                            <div class="gh-header"><span class="gh-name">1号棚</span><span class="gh-crop">番茄</span></div>
+                            <div class="gh-status"><span class="gh-tag">补光开启</span><span class="gh-tag">CO₂提升</span></div>
+                            <div class="gh-footer"><span>🌡️ 25.1°C</span> <span>💧 70%</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">2号棚</span><span class="gh-crop">水果黄瓜</span></div>
+                            <div class="gh-status"><span class="gh-tag">补光开启</span><span class="gh-tag">CO₂提升</span></div>
+                            <div class="gh-footer"><span>🌡️ 25.1°C</span> <span>💧 66%</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">3号棚</span><span class="gh-crop">生菜</span></div>
+                            <div class="gh-status"><span class="gh-tag">灌溉中</span><span class="gh-tag">墒情良好</span></div>
+                            <div class="gh-footer"><span>🌡️ 22.8°C</span> <span>💧 73%</span></div>
+                        </div>
+                        <div class="gh-card alert">
+                            <div class="gh-header"><span class="gh-name">4号棚</span><span class="gh-crop">彩椒</span></div>
+                            <div class="gh-status"><span class="gh-tag">轻微预警</span><span class="gh-tag">病斑识别</span></div>
+                            <div class="gh-footer"><span>🌡️ 26.3°C</span> <span>💧 64%</span></div>
+                        </div>
+                        <div class="gh-card warning tooltip-5">
+                            <div class="gh-header"><span class="gh-name">5号棚</span><span class="gh-crop">番茄育苗</span></div>
+                            <div class="gh-status"><span class="gh-tag">苗情稳定</span><span class="gh-tag">光照偏弱</span></div>
+                            <div class="gh-footer"><span>🌡️ 23.4°C</span> <span>💧 70%</span></div>
+                            <div class="hover-box">
+                                <div class="tit">棚室名称: 5号棚</div>
+                                <div class="row"><span>作物类型：</span><span>番茄育苗</span></div>
+                                <div class="row"><span>当前状态：</span><span style="color:#ffb74d;">需关注</span></div>
+                                <div class="row"><span>温度：</span><span>23.4°C</span></div>
+                                <div class="row"><span>湿度：</span><span>70%</span></div>
+                                <div class="row"><span>标签：</span><span>苗情稳定、光照偏弱</span></div>
+                            </div>
+                        </div>
+                        <div class="gh-card normal">
+                            <div class="gh-header"><span class="gh-name">6号棚</span><span class="gh-crop">小白菜</span></div>
+                            <div class="gh-status"><span class="gh-tag">生长快</span><span class="gh-tag">产量提升</span></div>
+                            <div class="gh-footer"><span>🌡️ 21.9°C</span> <span>💧 75%</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">7号棚</span><span class="gh-crop">黄瓜</span></div>
+                            <div class="gh-status"><span class="gh-tag">风机运行</span><span class="gh-tag">通风优</span></div>
+                            <div class="gh-footer"><span>🌡️ 24.9°C</span> <span>💧 68%</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">8号棚</span><span class="gh-crop">辣椒</span></div>
+                            <div class="gh-status"><span class="gh-tag">水肥一体化</span><span class="gh-tag">EC稳定</span></div>
+                            <div class="gh-footer"><span>🌡️ 25.4°C</span> <span>💧 67%</span></div>
+                        </div>
+                        <div class="gh-card science">
+                            <div class="gh-header"><span class="gh-name">9号棚</span><span class="gh-crop">草莓试验区</span></div>
+                            <div class="gh-status"><span class="gh-tag">科研样本</span><span class="gh-tag">数据采集中</span></div>
+                            <div class="gh-footer"><span>🌡️ 22.6°C</span> <span>💧 78%</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">10号棚</span><span class="gh-crop">生菜水培</span></div>
+                            <div class="gh-status"><span class="gh-tag">水质达标</span><span class="gh-tag">循环正常</span></div>
+                            <div class="gh-footer"><span>🌡️ 21.4°C</span> <span>💧 74%</span></div>
+                        </div>
+                        <div class="gh-card running">
+                            <div class="gh-header"><span class="gh-name">11号棚</span><span class="gh-crop">番茄高架</span></div>
+                            <div class="gh-status"><span class="gh-tag">坐果良好</span><span class="gh-tag">长势优</span></div>
+                            <div class="gh-footer"><span>🌡️ 24.7°C</span> <span>💧 68%</span></div>
+                        </div>
+                        <div class="gh-card normal">
+                            <div class="gh-header"><span class="gh-name">12号棚</span><span class="gh-crop">综合示范棚</span></div>
+                            <div class="gh-status"><span class="gh-tag">参观开放</span><span class="gh-tag">指标稳定</span></div>
+                            <div class="gh-footer"><span>🌡️ 23.9°C</span> <span>💧 71%</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="center-bottom panel">
+                    <div class="panel-title"><span></span>月度产量与销售趋势</div>
+                    <div id="chartMix" class="chart-container"></div>
+                </div>
+            </div>
+
+            <!-- 右栏：棚内环境曲线 + 数据统计图（来自页面1）+ 地图（来自页面1）+ 监控视频 -->
+            <div class="right-area">
+                <div class="right-panel top panel">
+                    <div class="panel-title"><span></span>棚内环境实时曲线</div>
+                    <div id="chartLine" class="chart-container"></div>
+                </div>
+
+                <!-- 替换为：数据统计图（来自页面1，柱状图+折线图混合） -->
+                <div class="right-panel mid panel">
+                    <div class="panel-title"><span></span>数据统计图</div>
+                    <div id="chartBlBar" class="chart-container" style="min-height:180px;"></div>
+                </div>
+
+                <!-- 替换为：地图（来自页面1）+ 监控视频 -->
+                <div class="right-panel bottom panel">
+                    <div class="flex-bw" style="margin-bottom:6px;">
+                        <div class="panel-title"><span></span>地图分布</div>
+                        <div class="panel-title" style="margin-left:16px;"><span></span>监控视频</div>
+                    </div>
+                    <div style="display:flex; gap:8px; height:calc(100% - 30px);">
+                        <div style="flex:1.2;" id="chartMap"></div>
+                        <div style="flex:1;">
+                            <div class="video-grid">
+                                <div class="video-box"><span class="cam-tag">监控1</span><span class="play-icon">▶</span></div>
+                                <div class="video-box"><span class="cam-tag">监控2</span><span class="play-icon">▶</span></div>
+                                <div class="video-box"><span class="cam-tag">监控3</span><span class="play-icon">▶</span></div>
+                                <div class="video-box"><span class="cam-tag">监控4</span><span class="play-icon">▶</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 1. 雷达图 - 环境多指标 ====================
+        var radarChart = echarts.init(document.getElementById('chartRadar'));
+        radarChart.setOption({
+            radar: {
+                indicator: [
+                    { name: '温度适宜度', max: 100 },
+                    { name: '空气湿度', max: 100 },
+                    { name: 'CO₂浓度', max: 100 },
+                    { name: '光照强度', max: 100 },
+                    { name: '土壤墒情', max: 100 },
+                    { name: 'EC浓度', max: 100 }
+                ],
+                center: ['50%', '50%'],
+                radius: '70%',
+                axisName: { color: '#a6c1ee', fontSize: 10 },
+                splitArea: { areaStyle: { color: ['rgba(0,229,255,0.02)', 'rgba(0,229,255,0.02)'] } },
+                axisLine: { lineStyle: { color: 'rgba(0,229,255,0.15)' } },
+                splitLine: { lineStyle: { color: 'rgba(0,229,255,0.08)' } }
+            },
+            series: [{
+                type: 'radar',
+                data: [{ value: [82, 88, 70, 65, 92, 78], name: '当前环境' }],
+                areaStyle: { color: 'rgba(0,229,255,0.15)' },
+                lineStyle: { color: '#00e5ff', width: 2 },
+                itemStyle: { color: '#00e5ff' }
+            }]
+        });
+
+        // ==================== 2. 条形图 - 虫情预警 ====================
+        var barChart = echarts.init(document.getElementById('chartBar'));
+        barChart.setOption({
+            grid: { left: '22%', right: '5%', top: '5%', bottom: '5%' },
+            xAxis: {
+                type: 'value',
+                splitLine: { show: false },
+                axisLabel: { color: '#a6c1ee', fontSize: 10 }
+            },
+            yAxis: {
+                type: 'category',
+                data: ['蚜虫', '白粉虱', '红蜘蛛', '霜霉病', '灰霉病'],
+                axisLine: { show: false },
+                axisLabel: { color: '#a6c1ee', fontSize: 11 }
+            },
+            series: [{
+                type: 'bar',
+                data: [120, 180, 100, 150, 80],
+                barWidth: 10,
+                itemStyle: {
+                    borderRadius: [0, 4, 4, 0],
+                    color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                        { offset: 0, color: '#0055aa' },
+                        { offset: 0.6, color: '#00b0ff' },
+                        { offset: 1, color: '#00e5ff' }
+                    ])
+                }
+            }]
+        });
+
+        // ==================== 3. 折线图 - 环境曲线 ====================
+        var lineChart = echarts.init(document.getElementById('chartLine'));
+        lineChart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['温度', '湿度', 'CO₂'], textStyle: { color: '#a6c1ee' }, bottom: 0, itemWidth: 12, itemHeight: 8 },
+            grid: { left: '5%', right: '8%', top: '8%', bottom: '22%' },
+            xAxis: {
+                type: 'category',
+                boundaryGap: false,
+                data: ['0时', '3时', '6时', '9时', '12时', '15时', '18时', '21时'],
+                axisLabel: { color: '#a6c1ee' },
+                axisLine: { lineStyle: { color: 'rgba(0,229,255,0.1)' } }
+            },
+            yAxis: [
+                { type: 'value', min: 0, max: 100, splitLine: { lineStyle: { color: 'rgba(0,229,255,0.05)' } }, axisLabel: { color: '#a6c1ee' } },
+                { type: 'value', min: 300, max: 1200, splitLine: { show: false }, axisLabel: { color: '#a6c1ee' } }
+            ],
+            series: [
+                { name: '温度', type: 'line', data: [21, 26, 22, 28, 25, 30, 24, 22], smooth: true, color: '#00e5ff',
+                    symbol: 'circle', symbolSize: 4, lineStyle: { width: 2 } },
+                { name: '湿度', type: 'line', data: [79, 82, 77, 61, 66, 69, 63, 84], smooth: true, color: '#4caf50',
+                    symbol: 'diamond', symbolSize: 4, lineStyle: { width: 2 } },
+                { name: 'CO₂', type: 'line', yAxisIndex: 1, data: [750, 860, 650, 480, 550, 520, 560, 900], smooth: true,
+                    color: '#ffb74d', symbol: 'triangle', symbolSize: 4, lineStyle: { width: 2 } }
+            ]
+        });
+
+        // ==================== 4. 混合图 - 产量与销售 ====================
+        var mixChart = echarts.init(document.getElementById('chartMix'));
+        mixChart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['月产量', '销售额'], textStyle: { color: '#a6c1ee' }, bottom: 0, itemWidth: 12, itemHeight: 8 },
+            grid: { left: '8%', right: '8%', top: '8%', bottom: '22%' },
+            xAxis: {
+                type: 'category',
+                data: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+                axisLabel: { color: '#a6c1ee' },
+                axisLine: { lineStyle: { color: 'rgba(0,229,255,0.1)' } }
+            },
+            yAxis: [
+                { type: 'value', name: '产量', nameTextStyle: { color: '#a6c1ee' },
+                    splitLine: { lineStyle: { color: 'rgba(0,229,255,0.05)' } }, axisLabel: { color: '#a6c1ee' } },
+                { type: 'value', name: '销售额', nameTextStyle: { color: '#a6c1ee' }, splitLine: { show: false },
+                    axisLabel: { color: '#a6c1ee' } }
+            ],
+            series: [{
+                name: '月产量',
+                type: 'bar',
+                data: [500, 400, 600, 800, 1000, 1200, 1100, 900, 700, 500, 300, 400],
+                itemStyle: {
+                    borderRadius: [4, 4, 0, 0],
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#00e5ff' }, { offset: 1,
+                        color: '#0055aa' }])
+                }
+            }, {
+                name: '销售额',
+                type: 'line',
+                yAxisIndex: 1,
+                data: [200, 180, 280, 350, 450, 520, 480, 400, 320, 200, 150, 180],
+                color: '#ffb74d',
+                symbol: 'circle',
+                symbolSize: 4,
+                smooth: true
+            }]
+        });
+
+        // ==================== 5. 数据统计图（来自页面1：柱状图+折线图混合） ====================
+        var blBarChart = echarts.init(document.getElementById('chartBlBar'));
+        var category = ["市区", "万州", "江北", "南岸", "北碚", "綦南", "长寿", "永川", "璧山", "江津", "城口", "大足", "垫江", "丰都", "奉节", "合川",
+            "江津区", "开州", "南川", "彭水", "黔江", "石柱", "铜梁", "潼南", "巫山", "巫溪", "武隆", "秀山", "酉阳", "云阳", "忠县", "川东", "检修"
+        ];
+        var lineData = [18092, 20728, 24045, 28348, 32808, 36097, 39867, 44715, 48444, 50415, 56061, 62677, 59521, 67560,
+            18092, 20728, 24045, 28348, 32808, 36097, 39867, 44715, 48444, 50415, 36097, 39867, 44715, 48444, 50415,
+            50061, 32677, 49521, 32808
+        ];
+        var barData = [4600, 5000, 5500, 6500, 7500, 8500, 9900, 12500, 14000, 21500, 23200, 24450, 25250, 33300, 4600,
+            5000, 5500, 6500, 7500, 8500, 9900, 22500, 14000, 21500, 8500, 9900, 12500, 14000, 21500, 23200, 24450,
+            25250, 7500
+        ];
+        var rateData = barData.map(function(b, i) { return parseFloat((b / lineData[i]).toFixed(2)); });
+
+        blBarChart.setOption({
+            tooltip: { show: true, trigger: 'item', axisPointer: { type: 'shadow', label: { show: true,
+                        backgroundColor: '#7B7DDC' } } },
+            legend: { show: true, textStyle: { color: '#fff' }, top: 0 },
+            grid: { left: '6%', right: '6%', top: '20%', bottom: '10%' },
+            xAxis: {
+                data: category,
+                axisLine: { lineStyle: { color: '#B4B4B4' } },
+                axisTick: { show: false },
+                axisLabel: { color: '#fff', fontSize: 9, interval: 2 }
+            },
+            yAxis: [{
+                splitLine: { show: false },
+                axisLine: { lineStyle: { color: '#B4B4B4' } },
+                axisLabel: { formatter: '{value}', color: '#fff', fontSize: 10 }
+            }, {
+                splitLine: { show: false },
+                axisLine: { lineStyle: { color: '#B4B4B4' } },
+                axisLabel: { formatter: '{value}', color: '#fff', fontSize: 10 }
+            }],
+            series: [{
+                name: '贯通率',
+                type: 'line',
+                smooth: true,
+                showAllSymbol: true,
+                symbol: 'emptyCircle',
+                symbolSize: 6,
+                yAxisIndex: 1,
+                itemStyle: { normal: { color: '#F02FC2' } },
+                data: rateData
+            }, {
+                name: '已贯通',
+                type: 'bar',
+                barWidth: 8,
+                itemStyle: {
+                    normal: {
+                        barBorderRadius: 5,
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#956FD4' },
+                        { offset: 1, color: '#3EACE5' }])
+                    }
+                },
+                data: barData
+            }, {
+                name: '计划贯通',
+                type: 'bar',
+                barGap: '-100%',
+                barWidth: 8,
+                itemStyle: {
+                    normal: {
+                        barBorderRadius: 5,
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0,
+                            color: 'rgba(156,107,211,0.8)' }, { offset: 0.2,
+                            color: 'rgba(156,107,211,0.5)' }, { offset: 1,
+                            color: 'rgba(156,107,211,0.2)' }])
+                    }
+                },
+                z: -12,
+                data: lineData
+            }]
+        });
+
+        // ==================== 6. 地图（来自页面1） ====================
+        var mapChart = echarts.init(document.getElementById('chartMap'));
+        var geoCoordMap = {
+            '厦门市': [118.11022, 24.490474],
+            '福州市': [119.206239, 26.275302],
+            '泉州市': [118.589421, 24.908853],
+            '漳州市': [117.561801, 24.510897],
+            '龙岩市': [116.82978, 25.391603],
+            '莆田市': [119.007558, 25.591011],
+            '三明市': [117.435001, 26.465444],
+            '南平市': [118.178459, 27.535627],
+            '宁德市': [119.527082, 27.15924]
+        };
+        var cityData = [
+            { name: '福州市', value: 10 }, { name: '厦门市', value: 9 }, { name: '漳州市', value: 8 },
+            { name: '泉州市', value: 7 }, { name: '三明市', value: 6 }, { name: '莆田市', value: 5 },
+            { name: '南平市', value: 4 }, { name: '龙岩市', value: 3 }, { name: '宁德市', value: 2 }
+        ];
+
+        fetch('https://geo.datav.aliyun.com/areas_v3/bound/350000_full.json')
+            .then(function(r) { return r.json(); })
+            .then(function(geoJson) {
+                echarts.registerMap('福建', geoJson);
+                renderMap();
+            })
+            .catch(function() {
+                renderMapFallback();
+            });
+
+        function renderMap() {
+            var scatterData = Object.keys(geoCoordMap).map(function(name) {
+                var found = cityData.find(function(c) { return c.name === name; });
+                return { name: name, value: [geoCoordMap[name][0], geoCoordMap[name][1], found ? found.value : 5] };
+            });
+            mapChart.setOption({
+                tooltip: { trigger: 'item', textStyle: { fontSize: 12 } },
+                geo: [{
+                    show: true,
+                    aspectScale: 0.85,
+                    zoom: 1.2,
+                    top: '8%',
+                    left: '10%',
+                    map: '福建',
+                    roam: false,
+                    itemStyle: {
+                        normal: {
+                            borderColor: '#7ad5ff7f',
+                            shadowOffsetY: 5,
+                            shadowBlur: 15,
+                            areaColor: 'rgba(5,21,35,0.1)'
+                        }
+                    }
+                }],
+                series: [{
+                    name: '相关指数',
+                    type: 'map',
+                    aspectScale: 0.85,
+                    zoom: 1.2,
+                    map: '福建',
+                    top: '7%',
+                    left: '9%',
+                    itemStyle: {
+                        normal: {
+                            areaColor: {
+                                type: 'linear',
+                                x: 0,
+                                y: 300,
+                                x2: 0,
+                                y2: 0,
+                                colorStops: [{ offset: 0, color: 'RGBA(19,96,187,1)' }, { offset: 1,
+                                    color: 'RGBA(7,193,223,1)' }]
+                            },
+                            borderColor: '#4ECEE6',
+                            borderWidth: 1
+                        },
+                        emphasis: {
+                            areaColor: '#4f7fff',
+                            borderColor: 'rgba(0,242,252,.6)',
+                            borderWidth: 2,
+                            shadowBlur: 10,
+                            shadowColor: '#00f2fc'
+                        }
+                    },
+                    label: {
+                        formatter: function(p) { return p.name; },
+                        show: true,
+                        position: 'insideRight',
+                        textStyle: { fontSize: 10, color: '#efefef' },
+                        emphasis: { textStyle: { color: '#fff' } }
+                    },
+                    data: cityData
+                }, {
+                    type: 'effectScatter',
+                    coordinateSystem: 'geo',
+                    symbolSize: 6,
+                    effectType: 'ripple',
+                    legendHoverLink: false,
+                    showEffectOn: 'render',
+                    rippleEffect: { period: 4, scale: 2.5, brushType: 'stroke' },
+                    zlevel: 1,
+                    itemStyle: { normal: { color: '#99FBFE', shadowBlur: 5, shadowColor: '#fff' } },
+                    data: scatterData
+                }]
+            });
+        }
+
+        function renderMapFallback() {
+            // 简单fallback：显示文字提示
+            mapChart.setOption({
+                title: { text: '地图加载失败', left: 'center', top: 'center', textStyle: { color: '#a6c1ee',
+                        fontSize: 14 } }
+            });
+        }
+
+        // ==================== 窗口自适应 ====================
+        window.addEventListener('resize', function() {
+            radarChart.resize();
+            barChart.resize();
+            lineChart.resize();
+            mixChart.resize();
+            blBarChart.resize();
+            mapChart.resize();
+        });
+    </script>
+
+</body>
+</html>
